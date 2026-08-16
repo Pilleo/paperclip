@@ -22,7 +22,7 @@ function update(overrides: Partial<StatusCardUpdate>): StatusCardUpdate {
     model: null,
     queryVersion: 1,
     changeSummary: null,
-    startedAt: new Date().toISOString(),
+    startedAt: NOW.toISOString(),
     finishedAt: null,
     status: "ok",
     error: null,
@@ -30,11 +30,18 @@ function update(overrides: Partial<StatusCardUpdate>): StatusCardUpdate {
   };
 }
 
+// A fixed instant rather than "now", so these fixtures mean the same thing on
+// every machine and at every hour.
+const NOW = new Date("2026-07-23T12:00:00.000Z");
+
 function iso(daysAgo: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - daysAgo);
-  // Noon avoids DST/midnight edge cases in the local-day filter.
-  d.setHours(12, 0, 0, 0);
+  const d = new Date(NOW);
+  // UTC, because `rollupUpdatesToday` filters on the UTC calendar day to match
+  // the server token cap. Built on the local day instead, `iso(0)` lands in the
+  // *previous* UTC day for the whole stretch after UTC midnight and before local
+  // midnight — about seven hours a day at UTC-7 — and today's rows drop out.
+  d.setUTCDate(d.getUTCDate() - daysAgo);
+  d.setUTCHours(12, 0, 0, 0);
   return d.toISOString();
 }
 
@@ -61,7 +68,7 @@ describe("rollupUpdatesToday", () => {
       // yesterday + last week — must not be counted as "today"
       update({ kind: "full", inputTokens: 9999, outputTokens: 9999, costCents: 99, startedAt: iso(1) }),
       update({ kind: "incremental", inputTokens: 9999, outputTokens: 9999, costCents: 99, startedAt: iso(7) }),
-    ]);
+    ], NOW);
     // Only today's full rebuild counts as an update (compile excluded).
     expect(rollup.updateCount).toBe(1);
     // Today's tokens/cost include today's compile but not older days.
